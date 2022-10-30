@@ -15,15 +15,13 @@ func distributor(p Params, c distributorChannels) {
 	// TODO: Create a 2D slice to store the world.
 	var height, width int
 	world := make([][]uint8, height)
-	for i:= 0;i<height;i++{
-		world[i] = make([]uint8,width)
+	for i := 0; i < height; i++ {
+		world[i] = make([]uint8, width)
 	}
 
 	turn := 0
 
 	// TODO: Execute all turns of the Game of Life.
-
-
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
 
