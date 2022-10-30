@@ -1,5 +1,7 @@
 package gol
 
+import "uk.ac.bris.cs/gameoflife/util"
+
 type distributorChannels struct {
 	events     chan<- Event
 	ioCommand  chan<- ioCommand
@@ -93,6 +95,18 @@ func calculateNextState(p Params, world [][]byte) [][]byte {
 	return newWorld
 }
 
+func calculateAliveCells(p Params, world [][]byte) []util.Cell {
+	newCell := []util.Cell{}
+	for i := 0; i < p.ImageHeight; i++ {
+		for j := 0; j < p.ImageWidth; j++ {
+			if world[i][j] == 0xff {
+				newCell = append(newCell, util.Cell{j, i})
+			}
+		}
+	}
+	return newCell
+}
+
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
 
@@ -112,11 +126,14 @@ func distributor(p Params, c distributorChannels) {
 	// TODO: Execute all turns of the Game of Life.
 
 	for turn < turns {
-
+		_ = calculateNextState(p, world)
 		turn++
 	}
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
+
+	//Alive := calculateAliveCells(p, world)
+	//FinalTurnComplete{turns, Alive}
 
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
