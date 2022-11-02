@@ -1,6 +1,9 @@
 package gol
 
-import "uk.ac.bris.cs/gameoflife/util"
+import (
+	"strconv"
+	"uk.ac.bris.cs/gameoflife/util"
+)
 
 type distributorChannels struct {
 	events     chan<- Event
@@ -115,9 +118,24 @@ func distributor(p Params, c distributorChannels) {
 	imageHeight := p.ImageHeight
 	imageWidth := p.ImageWidth
 
+	heightString := strconv.Itoa(imageHeight)
+	widthString := strconv.Itoa(imageWidth)
+
+	filename := heightString + "x" + widthString
+
+	c.ioFilename <- filename
+	c.ioCommand <- 0
+
 	world := make([][]uint8, imageHeight)
 	for i := 0; i < imageHeight; i++ {
 		world[i] = make([]uint8, imageWidth)
+	}
+
+	for x := 0; x < imageHeight; x++ {
+		for y := 0; y < imageWidth; y++ {
+			byte := <-c.ioInput
+			world[x][y] = byte
+		}
 	}
 
 	turns := p.Turns
@@ -126,14 +144,14 @@ func distributor(p Params, c distributorChannels) {
 	// TODO: Execute all turns of the Game of Life.
 
 	for turn < turns {
-		_ = calculateNextState(p, world)
+		world = calculateNextState(p, world)
 		turn++
 	}
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
 
-	//Alive := calculateAliveCells(p, world)
-	//FinalTurnComplete{turns, Alive}
+	alive := calculateAliveCells(p, world)
+	c.events <- FinalTurnComplete{turn, alive}
 
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
