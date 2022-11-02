@@ -89,8 +89,11 @@ func (io *ioState) writePgmImage() {
 // readPgmImage opens a pgm file and sends its data as an array of bytes.
 func (io *ioState) readPgmImage() {
 
+	fmt.Printf("entered readpgmImage() \n")
+
 	// Request a filename from the distributor.
 	filename := <-io.channels.filename
+	fmt.Printf("received filename from distributor: " + filename + "\n")
 
 	data, ioError := ioutil.ReadFile("images/" + filename + ".pgm")
 	util.Check(ioError)
@@ -132,12 +135,18 @@ func startIo(p Params, c ioChannels) {
 		channels: c,
 	}
 
+	//command := <-io.channels.command
+	//fmt.Printf("command sent from distributor: %d \n", command)
+
 	for {
+		fmt.Printf("entered loop \n")
 		select {
 		// Block and wait for requests from the distributor
 		case command := <-io.channels.command:
+			fmt.Printf("command sent from distributor: %d \n", command)
 			switch command {
 			case ioInput:
+				fmt.Printf("I am here\n")
 				io.readPgmImage()
 			case ioOutput:
 				io.writePgmImage()
