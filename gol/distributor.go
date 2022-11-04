@@ -78,12 +78,35 @@ func isAlive(cell byte) bool {
 	return false
 }
 
+//original version of calculateNextState()
 func calculateNextState(p Params, world [][]byte) [][]byte {
 	newWorld := make([][]byte, p.ImageWidth)
 	for i := range newWorld {
 		newWorld[i] = make([]byte, p.ImageHeight)
 	}
 	for i := 0; i < p.ImageHeight; i++ {
+		for j := 0; j < p.ImageWidth; j++ {
+			neighbours := getLiveNeighbours(p, world, i, j)
+			if world[i][j] == 0xff && (neighbours < 2 || neighbours > 3) {
+				newWorld[i][j] = 0x0
+			} else if world[i][j] == 0x0 && neighbours == 3 {
+				newWorld[i][j] = 0xff
+			} else {
+				newWorld[i][j] = world[i][j]
+			}
+		}
+	}
+	return newWorld
+}
+
+func calculateNextStateByThread(p Params, world [][]byte, startY, endY int) [][]byte {
+
+	newWorld := make([][]byte, p.ImageWidth)
+	for i := range newWorld {
+		newWorld[i] = make([]byte, endY+1)
+	}
+
+	for i := startY; i < endY; i++ {
 		for j := 0; j < p.ImageWidth; j++ {
 			neighbours := getLiveNeighbours(p, world, i, j)
 			if world[i][j] == 0xff && (neighbours < 2 || neighbours > 3) {
@@ -108,6 +131,19 @@ func calculateAliveCells(p Params, world [][]byte) []util.Cell {
 		}
 	}
 	return newCell
+}
+
+func worker(p Params, world [][]byte, startX, endX, startY, endY int, out chan<- [][]uint8) {
+	imagePart := calculateNextStateByThread(p, world, startY, endY)
+	out <- imagePart
+}
+
+func makeMatrix(height, width int) [][]uint8 {
+	matrix := make([][]uint8, height)
+	for i := range matrix {
+		matrix[i] = make([]uint8, width)
+	}
+	return matrix
 }
 
 // distributor divides the work between workers and interacts with other goroutines.
@@ -141,9 +177,36 @@ func distributor(p Params, c distributorChannels) {
 
 	// TODO: Execute all turns of the Game of Life.
 
-	for turn < turns {
-		world = calculateNextState(p, world)
-		turn++
+	if p.Threads == 1 {
+		for turn < turns {
+			world = calculateNextState(p, world)
+			turn++
+		}
+	} else {
+
+		for turn < turns {
+			workerHeight := p.ImageHeight / p.Threads
+			out := make([]chan [][]uint8, p.Threads)
+			for i := range out {
+				out[i] = make(chan [][]uint8)
+			}
+
+			for i := 0; i < p.Threads; i++ {
+				go worker(p, world, i*workerHeight, (i+1)*workerHeight, 0, p.ImageWidth, out[i])
+			}
+
+			var newPixelData [][]uint8
+
+			newPixelData = makeMatrix(0, 0)
+
+			for i := 0; i < p.Threads; i++ {
+				part := <-out[i]
+				newPixelData = append(newPixelData, part...)
+			}
+
+			world = newPixelData
+			turn++
+		}
 	}
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
