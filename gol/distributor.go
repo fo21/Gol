@@ -1,7 +1,6 @@
 package gol
 
 import (
-	"fmt"
 	"strconv"
 	"uk.ac.bris.cs/gameoflife/util"
 )
@@ -119,39 +118,23 @@ func distributor(p Params, c distributorChannels) {
 	imageHeight := p.ImageHeight
 	imageWidth := p.ImageWidth
 
-	fmt.Printf("image height: %d and image width: %d \n", imageHeight, imageWidth)
-
 	heightString := strconv.Itoa(imageHeight)
 	widthString := strconv.Itoa(imageWidth)
 
-	fmt.Printf("image height as string: %s and image width as string: %s \n", heightString, widthString)
-
 	filename := heightString + "x" + widthString
-	fmt.Printf(filename + "\n")
 
 	c.ioCommand <- 1
 
 	c.ioFilename <- filename
 
-	fmt.Printf("sending %s", filename)
-
 	world := make([][]uint8, imageHeight)
 	for i := 0; i < imageHeight; i++ {
 		world[i] = make([]uint8, imageWidth)
-		for j := 0; j < imageWidth; j++ {
+		for j := range world[i] {
 			byte := <-c.ioInput
-			fmt.Printf("receiving %d", byte)
 			world[i][j] = byte
 		}
 	}
-
-	/*
-		for x := 0; x < imageHeight; x++ {
-			for y := 0; y < imageWidth; y++ {
-				fmt.Printf("%d ", world[x][y])
-			}
-			fmt.Printf("/n")
-		}*/
 
 	turns := p.Turns
 	turn := 0
@@ -160,12 +143,6 @@ func distributor(p Params, c distributorChannels) {
 
 	for turn < turns {
 		world = calculateNextState(p, world)
-		for x := 0; x < imageHeight; x++ {
-			for y := 0; y < imageWidth; y++ {
-				fmt.Printf("%d ", world[x][y])
-			}
-			fmt.Printf("/n")
-		}
 		turn++
 	}
 
