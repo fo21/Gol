@@ -1,8 +1,11 @@
 package gol
 
 import (
+	"fmt"
 	"strconv"
 	"uk.ac.bris.cs/gameoflife/util"
+
+	"time"
 )
 
 type distributorChannels struct {
@@ -133,6 +136,18 @@ func calculateAliveCells(p Params, world [][]byte) []util.Cell {
 	return newCell
 }
 
+func calculateCount(p Params, world [][]byte) int {
+	sum := 0
+	for i := 0; i < p.ImageHeight; i++ {
+		for j := 0; j < p.ImageWidth; j++ {
+			if world[i][j] == 255 {
+				sum++
+			}
+		}
+	}
+	return sum
+}
+
 func worker(p Params, world [][]byte, startX, endX, startY, endY int, out chan<- [][]uint8) {
 	imagePart := calculateNextStateByThread(p, world, startY, endY)
 	out <- imagePart
@@ -177,13 +192,30 @@ func distributor(p Params, c distributorChannels) {
 
 	// TODO: Execute all turns of the Game of Life.
 
+	ticker := time.NewTicker(2 * time.Second)
+	done := make(chan bool)
+
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case t := <-ticker.C:
+				fmt.Println("Ticket at ", t)
+				fmt.Printf("\n turn: %d \n", turn)
+				c.events <- AliveCellsCount{turn, calculateCount(p, world)}
+			}
+		}
+	}()
+
 	if p.Threads == 1 {
+
 		for turn < turns {
 			world = calculateNextState(p, world)
 			turn++
+			c.events <- TurnComplete{CompletedTurns: turn}
 		}
 	} else {
-
 		for turn < turns {
 			workerHeight := p.ImageHeight / p.Threads
 			out := make([]chan [][]uint8, p.Threads)
@@ -203,16 +235,19 @@ func distributor(p Params, c distributorChannels) {
 				part := <-out[i]
 				newPixelData = append(newPixelData, part...)
 			}
-
 			world = newPixelData
 			turn++
+			c.events <- TurnComplete{CompletedTurns: turn}
 		}
+
 	}
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
 
 	alive := calculateAliveCells(p, world)
-	c.events <- FinalTurnComplete{turn, alive}
+	c.events <- FinalTurnComplete{turns, alive}
+	ticker.Stop()
+	done <- true
 
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
