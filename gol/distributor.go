@@ -255,6 +255,15 @@ func distributor(p Params, c distributorChannels) {
 	ticker.Stop()
 	done <- true
 
+	c.ioCommand <- ioOutput
+	c.ioFilename <- filename + "x" + strconv.Itoa(turns)
+
+	for i := 0; i < imageHeight; i++ {
+		for j := 0; j < imageWidth; j++ {
+			c.ioOutput <- world[i][j]
+		}
+	}
+
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
