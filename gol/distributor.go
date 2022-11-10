@@ -1,8 +1,8 @@
 package gol
 
 import (
-	"fmt"
 	"strconv"
+	"sync"
 	"uk.ac.bris.cs/gameoflife/util"
 
 	"time"
@@ -140,7 +140,7 @@ func calculateCount(p Params, world [][]byte) int {
 	sum := 0
 	for i := 0; i < p.ImageHeight; i++ {
 		for j := 0; j < p.ImageWidth; j++ {
-			if world[i][j] == 255 {
+			if world[i][j] != 0 {
 				sum++
 			}
 		}
@@ -174,7 +174,7 @@ func distributor(p Params, c distributorChannels) {
 
 	filename := heightString + "x" + widthString
 
-	c.ioCommand <- 1
+	c.ioCommand <- ioInput
 
 	c.ioFilename <- filename
 
@@ -192,6 +192,8 @@ func distributor(p Params, c distributorChannels) {
 
 	// TODO: Execute all turns of the Game of Life.
 
+	var m sync.Mutex
+
 	ticker := time.NewTicker(2 * time.Second)
 	done := make(chan bool)
 
@@ -200,10 +202,10 @@ func distributor(p Params, c distributorChannels) {
 			select {
 			case <-done:
 				return
-			case t := <-ticker.C:
-				fmt.Println("Ticket at ", t)
-				fmt.Printf("\n turn: %d \n", turn)
+			case <-ticker.C:
+				m.Lock()
 				c.events <- AliveCellsCount{turn, calculateCount(p, world)}
+				m.Unlock()
 			}
 		}
 	}()
@@ -211,9 +213,11 @@ func distributor(p Params, c distributorChannels) {
 	if p.Threads == 1 {
 
 		for turn < turns {
+			m.Lock()
 			world = calculateNextState(p, world)
 			turn++
 			c.events <- TurnComplete{CompletedTurns: turn}
+			m.Unlock()
 		}
 	} else {
 		for turn < turns {
@@ -223,6 +227,7 @@ func distributor(p Params, c distributorChannels) {
 				out[i] = make(chan [][]uint8)
 			}
 
+			m.Lock()
 			for i := 0; i < p.Threads; i++ {
 				go worker(p, world, i*workerHeight, (i+1)*workerHeight, 0, p.ImageWidth, out[i])
 			}
@@ -238,6 +243,7 @@ func distributor(p Params, c distributorChannels) {
 			world = newPixelData
 			turn++
 			c.events <- TurnComplete{CompletedTurns: turn}
+			m.Unlock()
 		}
 
 	}
