@@ -19,6 +19,7 @@ type distributorChannels struct {
 	keyPresses <-chan rune
 }
 
+//Counts the alive neighbours of a cell
 func getLiveNeighbours(p Params, world [][]byte, a, b int) int {
 	var alive = 0
 	var widthLeft int
@@ -76,6 +77,7 @@ func getLiveNeighbours(p Params, world [][]byte, a, b int) int {
 	return alive
 }
 
+//check if cell is alive
 func isAlive(cell byte) bool {
 	if cell == 255 {
 		return true
@@ -83,7 +85,7 @@ func isAlive(cell byte) bool {
 	return false
 }
 
-//original version of calculateNextState()
+//calculates the next state of the world for single threaded
 func calculateNextState(p Params, world [][]byte) [][]byte {
 	newWorld := make([][]byte, p.ImageWidth)
 	for i := range newWorld {
@@ -104,6 +106,7 @@ func calculateNextState(p Params, world [][]byte) [][]byte {
 	return newWorld
 }
 
+//calculates the next state of the world for multiple threaded
 func calculateNextStateByThread(p Params, world [][]byte, startY, endY int) [][]byte {
 
 	newWorld := make([][]byte, p.ImageWidth)
@@ -126,6 +129,7 @@ func calculateNextStateByThread(p Params, world [][]byte, startY, endY int) [][]
 	return newWorld
 }
 
+//create a list of alive cells
 func calculateAliveCells(p Params, world [][]byte) []util.Cell {
 	newCell := []util.Cell{}
 	for i := 0; i < p.ImageHeight; i++ {
@@ -138,6 +142,7 @@ func calculateAliveCells(p Params, world [][]byte) []util.Cell {
 	return newCell
 }
 
+//count the number of alive cells
 func calculateCount(p Params, world [][]byte) int {
 	sum := 0
 	for i := 0; i < p.ImageHeight; i++ {
@@ -150,11 +155,13 @@ func calculateCount(p Params, world [][]byte) int {
 	return sum
 }
 
+//worker function for multiple threaded case
 func worker(p Params, world [][]byte, startX, endX, startY, endY int, out chan<- [][]uint8) {
 	imagePart := calculateNextStateByThread(p, world, startY, endY)
 	out <- imagePart
 }
 
+//make an uninitialised matrix
 func makeMatrix(height, width int) [][]uint8 {
 	matrix := make([][]uint8, height)
 	for i := range matrix {
@@ -163,6 +170,7 @@ func makeMatrix(height, width int) [][]uint8 {
 	return matrix
 }
 
+//report the CellFlipped event when a cell changes state
 func compareWorlds(old, new [][]byte, c *distributorChannels, turn int, p Params) {
 	for i := 0; i < p.ImageHeight; i++ {
 		for j := 0; j < p.ImageWidth; j++ {
@@ -176,8 +184,6 @@ func compareWorlds(old, new [][]byte, c *distributorChannels, turn int, p Params
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
 
-	// TODO: Create a 2D slice to store the world.
-
 	imageHeight := p.ImageHeight
 	imageWidth := p.ImageWidth
 
@@ -185,6 +191,8 @@ func distributor(p Params, c distributorChannels) {
 	widthString := strconv.Itoa(imageWidth)
 
 	filename := heightString + "x" + widthString
+
+	//read in the initial configuration of the world
 
 	c.ioCommand <- ioInput
 
@@ -208,6 +216,8 @@ func distributor(p Params, c distributorChannels) {
 
 	var m sync.Mutex
 
+	//ticker that reports the number of alive cells every two seconds
+
 	ticker := time.NewTicker(2 * time.Second)
 	done := make(chan bool)
 
@@ -224,6 +234,7 @@ func distributor(p Params, c distributorChannels) {
 		}
 	}()
 
+	//keypress
 	var ok = 1
 	go func() {
 		for {
@@ -240,7 +251,6 @@ func distributor(p Params, c distributorChannels) {
 				}
 			case 'q':
 				if ok == 1 {
-					fmt.Println("pressed q \n")
 					c.ioCommand <- ioOutput
 					c.ioFilename <- filename + "x" + strconv.Itoa(p.Turns)
 
@@ -266,11 +276,10 @@ func distributor(p Params, c distributorChannels) {
 					// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
 					close(c.events)
 				} else {
-					fmt.Println("pressed wrong key. try again \n")
+					fmt.Println("Pressed the wrong key. try again \n")
 				}
 			case 's':
 				if ok == 1 {
-					fmt.Println("pressed s \n")
 					c.ioCommand <- ioOutput
 					c.ioFilename <- filename + "x" + strconv.Itoa(turns)
 
@@ -281,11 +290,13 @@ func distributor(p Params, c distributorChannels) {
 					}
 					time.Sleep(1 * time.Second)
 				} else {
-					fmt.Println("pressed wrong key. try again \n")
+					fmt.Println("Pressed wrong key. try again \n")
 				}
 			}
 		}
 	}()
+
+	//calculate next state depending on the number of threads
 
 	if p.Threads == 1 {
 
@@ -305,7 +316,6 @@ func distributor(p Params, c distributorChannels) {
 			for i := range out {
 				out[i] = make(chan [][]uint8)
 			}
-
 			m.Lock()
 			for i := 0; i < p.Threads; i++ {
 				go worker(p, world, i*workerHeight, (i+1)*workerHeight, 0, p.ImageWidth, out[i])
@@ -328,14 +338,13 @@ func distributor(p Params, c distributorChannels) {
 
 	}
 
-	// TODO: Report the final state using FinalTurnCompleteEvent.
-
-	alive := calculateAliveCells(p, world)
-	c.events <- FinalTurnComplete{turns, alive}
+	c.events <- FinalTurnComplete{turns, calculateAliveCells(p, world)}
 
 	ticker.Stop()
 	done <- true
 
+	//write final state of the world to pgm image
+	
 	c.ioCommand <- ioOutput
 	c.ioFilename <- filename + "x" + strconv.Itoa(turns)
 
