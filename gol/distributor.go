@@ -226,59 +226,63 @@ func distributor(p Params, c distributorChannels) {
 
 	var ok = 1
 	go func() {
-		switch <-c.keyPresses {
-		case 'p':
-			if ok == 1 {
-				fmt.Printf("The current turn that is being processed: %d\n", turn)
-				ok = 0
-			} else if ok == 0 {
-				fmt.Println("Continuing... \n")
-				ok = 1
-			}
-		case 'q':
-			if ok == 1 {
-				fmt.Println("pressed q \n")
-				c.ioCommand <- ioOutput
-				c.ioFilename <- filename + "x" + strconv.Itoa(p.Turns)
-
-				for i := 0; i < imageHeight; i++ {
-					for j := 0; j < imageWidth; j++ {
-						c.ioOutput <- world[i][j]
-					}
+		for {
+			switch <-c.keyPresses {
+			case 'p':
+				if ok == 1 {
+					fmt.Printf("The current turn that is being processed: %d\n", turn)
+					ok = 0
+					m.Lock()
+				} else if ok == 0 {
+					fmt.Println("Continuing... \n")
+					ok = 1
+					m.Unlock()
 				}
+			case 'q':
+				if ok == 1 {
+					fmt.Println("pressed q \n")
+					c.ioCommand <- ioOutput
+					c.ioFilename <- filename + "x" + strconv.Itoa(p.Turns)
 
-				time.Sleep(1 * time.Second)
-
-				alive := calculateAliveCells(p, world)
-				c.events <- FinalTurnComplete{turn, alive}
-
-				ticker.Stop()
-				done <- true
-				// Make sure that the Io has finished any output before exiting.
-				c.ioCommand <- ioCheckIdle
-				<-c.ioIdle
-
-				c.events <- StateChange{turn, Quitting}
-
-				// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
-				close(c.events)
-			} else {
-				fmt.Println("pressed wrong key. try again \n")
-			}
-		case 's':
-			if ok == 1 {
-				fmt.Println("pressed s \n")
-				c.ioCommand <- ioOutput
-				c.ioFilename <- filename + "x" + strconv.Itoa(turns)
-
-				for i := 0; i < imageHeight; i++ {
-					for j := 0; j < imageWidth; j++ {
-						c.ioOutput <- world[i][j]
+					for i := 0; i < imageHeight; i++ {
+						for j := 0; j < imageWidth; j++ {
+							c.ioOutput <- world[i][j]
+						}
 					}
+
+					time.Sleep(1 * time.Second)
+
+					alive := calculateAliveCells(p, world)
+					c.events <- FinalTurnComplete{turn, alive}
+
+					ticker.Stop()
+					done <- true
+					// Make sure that the Io has finished any output before exiting.
+					c.ioCommand <- ioCheckIdle
+					<-c.ioIdle
+
+					c.events <- StateChange{turn, Quitting}
+
+					// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
+					close(c.events)
+				} else {
+					fmt.Println("pressed wrong key. try again \n")
 				}
-				time.Sleep(1 * time.Second)
-			} else {
-				fmt.Println("pressed wrong key. try again \n")
+			case 's':
+				if ok == 1 {
+					fmt.Println("pressed s \n")
+					c.ioCommand <- ioOutput
+					c.ioFilename <- filename + "x" + strconv.Itoa(turns)
+
+					for i := 0; i < imageHeight; i++ {
+						for j := 0; j < imageWidth; j++ {
+							c.ioOutput <- world[i][j]
+						}
+					}
+					time.Sleep(1 * time.Second)
+				} else {
+					fmt.Println("pressed wrong key. try again \n")
+				}
 			}
 		}
 	}()
