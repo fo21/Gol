@@ -1,6 +1,7 @@
 package gol
 
 import (
+	"fmt"
 	"strconv"
 	"sync"
 	"uk.ac.bris.cs/gameoflife/util"
@@ -15,6 +16,7 @@ type distributorChannels struct {
 	ioFilename chan<- string
 	ioOutput   chan<- uint8
 	ioInput    <-chan uint8
+	keyPresses <-chan rune
 }
 
 func getLiveNeighbours(p Params, world [][]byte, a, b int) int {
@@ -161,6 +163,16 @@ func makeMatrix(height, width int) [][]uint8 {
 	return matrix
 }
 
+func compareWorlds(old, new [][]byte, c *distributorChannels, turn int, p Params) {
+	for i := 0; i < p.ImageHeight; i++ {
+		for j := 0; j < p.ImageWidth; j++ {
+			if old[i][j] != new[i][j] {
+				c.events <- CellFlipped{turn, util.Cell{j, i}}
+			}
+		}
+	}
+}
+
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
 
@@ -190,7 +202,9 @@ func distributor(p Params, c distributorChannels) {
 	turns := p.Turns
 	turn := 0
 
-	// TODO: Execute all turns of the Game of Life.
+	for _, cell := range calculateAliveCells(p, world) {
+		c.events <- CellFlipped{0, cell}
+	}
 
 	var m sync.Mutex
 
@@ -210,11 +224,72 @@ func distributor(p Params, c distributorChannels) {
 		}
 	}()
 
+	var ok = 1
+	go func() {
+		switch <-c.keyPresses {
+		case 'p':
+			if ok == 1 {
+				fmt.Printf("The current turn that is being processed: %d\n", turn)
+				ok = 0
+			} else if ok == 0 {
+				fmt.Println("Continuing... \n")
+				ok = 1
+			}
+		case 'q':
+			if ok == 1 {
+				fmt.Println("pressed q \n")
+				c.ioCommand <- ioOutput
+				c.ioFilename <- filename + "x" + strconv.Itoa(p.Turns)
+
+				for i := 0; i < imageHeight; i++ {
+					for j := 0; j < imageWidth; j++ {
+						c.ioOutput <- world[i][j]
+					}
+				}
+
+				time.Sleep(1 * time.Second)
+
+				alive := calculateAliveCells(p, world)
+				c.events <- FinalTurnComplete{turn, alive}
+
+				ticker.Stop()
+				done <- true
+				// Make sure that the Io has finished any output before exiting.
+				c.ioCommand <- ioCheckIdle
+				<-c.ioIdle
+
+				c.events <- StateChange{turn, Quitting}
+
+				// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
+				close(c.events)
+			} else {
+				fmt.Println("pressed wrong key. try again \n")
+			}
+		case 's':
+			if ok == 1 {
+				fmt.Println("pressed s \n")
+				c.ioCommand <- ioOutput
+				c.ioFilename <- filename + "x" + strconv.Itoa(turns)
+
+				for i := 0; i < imageHeight; i++ {
+					for j := 0; j < imageWidth; j++ {
+						c.ioOutput <- world[i][j]
+					}
+				}
+				time.Sleep(1 * time.Second)
+			} else {
+				fmt.Println("pressed wrong key. try again \n")
+			}
+		}
+	}()
+
 	if p.Threads == 1 {
 
 		for turn < turns {
 			m.Lock()
+			oldWorld := append(world)
 			world = calculateNextState(p, world)
+			compareWorlds(oldWorld, world, &c, turn+1, p)
 			turn++
 			c.events <- TurnComplete{CompletedTurns: turn}
 			m.Unlock()
@@ -240,6 +315,7 @@ func distributor(p Params, c distributorChannels) {
 				part := <-out[i]
 				newPixelData = append(newPixelData, part...)
 			}
+			compareWorlds(world, newPixelData, &c, turn, p)
 			world = newPixelData
 			turn++
 			c.events <- TurnComplete{CompletedTurns: turn}
@@ -252,6 +328,7 @@ func distributor(p Params, c distributorChannels) {
 
 	alive := calculateAliveCells(p, world)
 	c.events <- FinalTurnComplete{turns, alive}
+
 	ticker.Stop()
 	done <- true
 
