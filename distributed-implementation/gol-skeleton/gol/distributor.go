@@ -3,6 +3,7 @@ package gol
 import (
 	"log"
 	"net/rpc"
+	"strconv"
 	"uk.ac.bris.cs/gameoflife/gol/stubs"
 )
 
@@ -15,8 +16,8 @@ type distributorChannels struct {
 	ioInput    <-chan uint8
 }
 
-func makeCall(client *rpc.Client, world [][]byte) {
-	request := stubs.Request{InitialWorld: world}
+func makeCall(client *rpc.Client, world [][]byte, turns, height, width int) {
+	request := stubs.Request{InitialWorld: world, Turns: turns, ImageHeight: height, ImageWidth: width}
 
 	//this is a pointer
 	response := new(stubs.Response)
@@ -24,12 +25,36 @@ func makeCall(client *rpc.Client, world [][]byte) {
 	//fmt.Println("Responded: " + response.Message)
 }
 
+func loadWorld(p Params, c distributorChannels) [][]byte {
+	heightString := strconv.Itoa(p.ImageHeight)
+	widthString := strconv.Itoa(p.ImageWidth)
+
+	filename := heightString + "x" + widthString
+
+	c.ioCommand <- ioInput
+
+	c.ioFilename <- filename
+
+	initialWorld := make([][]uint8, p.ImageHeight)
+	for i := 0; i < p.ImageHeight; i++ {
+		initialWorld[i] = make([]uint8, p.ImageWidth)
+		for j := range initialWorld[i] {
+			byte := <-c.ioInput
+			initialWorld[i][j] = byte
+		}
+	}
+	return initialWorld
+}
+
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
 
 	// TODO: Create a 2D slice to store the world.
-	board := loadBoard(p, c)
-	board1 := allocateBoard(p.ImageHeight, p.ImageWidth)
+
+	initialWorld := loadWorld(p, c)
+
+	//board1 := allocateBoard(p.ImageHeight, p.ImageWidth) do i need this? idk - keep the comment for later
+
 	turn := 0
 
 	server := "127.0.0.1:8030"
@@ -38,6 +63,8 @@ func distributor(p Params, c distributorChannels) {
 		log.Fatal("dialing: ", err)
 	}
 	defer client.Close()
+
+	makeCall(client, initialWorld, p.Turns, p.ImageHeight, p.ImageWidth)
 
 	/* ----------template code ----------------
 	file, _ := os.Open("wordlist")
@@ -54,7 +81,7 @@ func distributor(p Params, c distributorChannels) {
 
 	//this goes on the gol engine along with all its functions
 	for turn < p.Turns {
-		updateBoard(c, turn, board, board1, p.ImageHeight, p.ImageWidth, 0, p.ImageHeight)
+		//updateBoard(c, turn, board, board1, p.ImageHeight, p.ImageWidth, 0, p.ImageHeight)
 
 		turn = turn + 1
 	}
