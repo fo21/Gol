@@ -1,5 +1,11 @@
 package gol
 
+import (
+	"log"
+	"net/rpc"
+	"uk.ac.bris.cs/gameoflife/gol/stubs"
+)
+
 type distributorChannels struct {
 	events     chan<- Event
 	ioCommand  chan<- ioCommand
@@ -9,6 +15,15 @@ type distributorChannels struct {
 	ioInput    <-chan uint8
 }
 
+func makeCall(client *rpc.Client, world [][]byte) {
+	request := stubs.Request{InitialWorld: world}
+
+	//this is a pointer
+	response := new(stubs.Response)
+	client.Call(stubs.ProcessTurnsHandler, request, response)
+	//fmt.Println("Responded: " + response.Message)
+}
+
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
 
@@ -16,6 +31,24 @@ func distributor(p Params, c distributorChannels) {
 	board := loadBoard(p, c)
 	board1 := allocateBoard(p.ImageHeight, p.ImageWidth)
 	turn := 0
+
+	server := "127.0.0.1:8030"
+	client, err := rpc.Dial("tcp", server)
+	if err != nil {
+		log.Fatal("dialing: ", err)
+	}
+	defer client.Close()
+
+	/* ----------template code ----------------
+	file, _ := os.Open("wordlist")
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		t := scanner.Text()
+		fmt.Println("Called: " + t)
+		makeCall(client, t)
+	}
+
+	*/
 
 	// TODO: Execute all turns of the Game of Life.
 
