@@ -1,12 +1,13 @@
 package stubs
 
+//syntax meaning ---- handler = "exported_type.exported_method"
 var ProcessTurnsHandler = "GameOfLifeOperations.ProcessTurns"
 
 type Request struct {
-	initialWorld                   [][]byte
-	turns, imageHeight, imageWidth int
+	InitialWorld                   [][]byte
+	Turns, ImageHeight, ImageWidth int
 }
 
 type Response struct {
-	finalWorld [][]byte
+	FinalWorld [][]byte
 }
