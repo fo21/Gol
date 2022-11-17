@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/rpc"
 	"strconv"
-	"uk.ac.bris.cs/gameoflife/gol/stubs"
+	"uk.ac.bris.cs/gameoflife/stubs"
 )
 
 type distributorChannels struct {

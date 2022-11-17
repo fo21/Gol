@@ -7,7 +7,7 @@ import (
 	"net"
 	"net/rpc"
 	"time"
-	"uk.ac.bris.cs/gameoflife/gol/stubs"
+	"uk.ac.bris.cs/gameoflife/stubs"
 	"uk.ac.bris.cs/gameoflife/util"
 )
 
