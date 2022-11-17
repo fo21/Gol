@@ -11,21 +11,7 @@ import (
 	"uk.ac.bris.cs/gameoflife/util"
 )
 
-/** add game of life functions here**/
-
-//these are functions - can't be accessed by local controler via rpc
-//this will be updateworld aka calculateNextState
-
-/* ----------------- template function
-func ReverseString(s string, i int) string {
-	time.Sleep(time.Duration(rand.Intn(i)) * time.Second)
-	runes := []rune(s)
-	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
-		runes[i], runes[j] = runes[j], runes[i]
-	}
-	return string(runes)
-}
-*/
+//these are functions - they can't be accessed by local controler via rpc
 
 func getLiveNeighbours(p stubs.Request, world [][]byte, a, b int) int {
 	var alive = 0
@@ -128,7 +114,7 @@ func calculateAliveCells(p stubs.Request, world [][]byte) []util.Cell {
 
 type GameOfLifeOperations struct{}
 
-//these are methods wow - can be accessed by local controller via rpc
+//these are methods - can be accessed by local controller via rpc
 func (s *GameOfLifeOperations) ProcessTurns(req stubs.Request, res *stubs.Response) (err error) {
 	fmt.Println("Processing turns... remotely.... so cool")
 	turns := req.Turns
@@ -145,18 +131,6 @@ func (s *GameOfLifeOperations) ProcessTurns(req stubs.Request, res *stubs.Respon
 	fmt.Println("Returning info... so cool pt2")
 	return
 }
-
-/* -- how to access stuff in ProcessTurns
-
-if req.Message == "" {
-		err = errors.New("A message must be specified")
-		return
-	}
-
-	fmt.Println("Got Message: " + req.Message)
-	res.Message = ReverseString(req.Message, 10)
-	return
-*/
 
 /* -------- template method
 func (s *SecretStringOperations) FastReverse(req stubs.Request, res *stubs.Response) (err error) {

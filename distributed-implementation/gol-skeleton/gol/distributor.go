@@ -18,11 +18,9 @@ type distributorChannels struct {
 
 func makeCall(client *rpc.Client, world [][]byte, turns, height, width int) {
 	request := stubs.Request{InitialWorld: world, Turns: turns, ImageHeight: height, ImageWidth: width}
-
 	//this is a pointer
 	response := new(stubs.Response)
 	client.Call(stubs.ProcessTurnsHandler, request, response)
-	//fmt.Println("Responded: " + response.Message)
 }
 
 func loadWorld(p Params, c distributorChannels) [][]byte {
@@ -51,9 +49,9 @@ func distributor(p Params, c distributorChannels) {
 
 	// TODO: Create a 2D slice to store the world.
 
-	initialWorld := loadWorld(p, c)
+	//board1 := allocateBoard(p.ImageHeight, p.ImageWidth) do i need this? idk - keep the comment for later.
 
-	//board1 := allocateBoard(p.ImageHeight, p.ImageWidth) do i need this? idk - keep the comment for later
+	initialWorld := loadWorld(p, c)
 
 	turn := 0
 
@@ -65,27 +63,6 @@ func distributor(p Params, c distributorChannels) {
 	defer client.Close()
 
 	makeCall(client, initialWorld, p.Turns, p.ImageHeight, p.ImageWidth)
-
-	/* ----------template code ----------------
-	file, _ := os.Open("wordlist")
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		t := scanner.Text()
-		fmt.Println("Called: " + t)
-		makeCall(client, t)
-	}
-
-	*/
-
-	// TODO: Execute all turns of the Game of Life.
-
-	//this goes on the gol engine along with all its functions
-	for turn < p.Turns {
-		//updateBoard(c, turn, board, board1, p.ImageHeight, p.ImageWidth, 0, p.ImageHeight)
-
-		turn = turn + 1
-	}
-	//end of what needs to be deported
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
 
