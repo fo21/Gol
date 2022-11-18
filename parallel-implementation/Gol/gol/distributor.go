@@ -49,7 +49,13 @@ func getLiveNeighbours(p Params, world [][]byte, a, b int) int {
 	} else {
 		heightDown = b + 1
 	}
+	/*
+		fmt.Println("widthLeft is " + strconv.Itoa(widthLeft))
+		fmt.Println("b (y) is " + strconv.Itoa(b))
+		fmt.Println("world size x is " + strconv.Itoa(len(world)))
+		fmt.Println("world size y is " + strconv.Itoa(len(world[0])) + "\n============")
 
+	*/
 	if isAlive(world[widthLeft][b]) {
 		alive = alive + 1
 	}
@@ -90,19 +96,26 @@ func calculateNextState(p Params, world [][]byte, startY, endY int) [][]byte {
 
 	newWorld := make([][]byte, p.ImageWidth)
 	for x := range newWorld {
-		newWorld[x] = make([]byte, endY)
+		newWorld[x] = make([]byte, endY-startY) // calculate height of this part of matrix
+	}
+
+	var lastBit = endY
+	if lastBit > p.ImageHeight {
+		lastBit = p.ImageHeight
 	}
 
 	for x := 0; x < p.ImageWidth; x++ {
-		for y := startY; y < endY; y++ {
-			neighbours := getLiveNeighbours(p, world, x, y)
+		for y := 0; y < lastBit-startY; y++ {
+			//fmt.Println("=========\nendY: " + strconv.Itoa(endY) + " startY: " + strconv.Itoa(startY))
+			//fmt.Println("y is currently: " + strconv.Itoa(y))
+			neighbours := getLiveNeighbours(p, world, x, y+startY)
 			//fmt.Println("Working on Cell with X: " + strconv.Itoa(x) + " and Y: " + strconv.Itoa(y))
-			if world[x][y] == 0xff && (neighbours < 2 || neighbours > 3) {
+			if world[x][y+startY] == 0xff && (neighbours < 2 || neighbours > 3) {
 				newWorld[x][y] = 0x0
-			} else if world[x][y] == 0x0 && neighbours == 3 {
+			} else if world[x][y+startY] == 0x0 && neighbours == 3 {
 				newWorld[x][y] = 0xff
 			} else {
-				newWorld[x][y] = world[x][y]
+				newWorld[x][y] = world[x][y+startY]
 			}
 		}
 	}
@@ -142,10 +155,10 @@ func worker(p Params, world [][]byte, startY, endY int, out chan<- [][]uint8) {
 }
 
 //make an uninitialised matrix
-func makeMatrix(height, width int) [][]uint8 {
-	matrix := make([][]uint8, height)
+func makeMatrix(width, height int) [][]uint8 {
+	matrix := make([][]uint8, width)
 	for i := range matrix {
-		matrix[i] = make([]uint8, width)
+		matrix[i] = make([]uint8, height)
 	}
 	return matrix
 }
@@ -153,9 +166,11 @@ func makeMatrix(height, width int) [][]uint8 {
 //report the CellFlipped event when a cell changes state
 func compareWorlds(old, new [][]byte, c *distributorChannels, turn int, p Params) {
 	for x := 0; x < p.ImageWidth; x++ {
+		//fmt.Printf("x: " + strconv.Itoa(x))
 		for y := 0; y < p.ImageHeight; y++ {
+			//fmt.Printf(" y: " + strconv.Itoa(y) + "\n")
 			if old[x][y] != new[x][y] {
-				c.events <- CellFlipped{turn, util.Cell{X: x, Y: y}}
+				c.events <- CellFlipped{turn, util.Cell{X: y, Y: x}}
 			}
 		}
 	}
@@ -180,7 +195,8 @@ func distributor(p Params, c distributorChannels) {
 
 	c.ioCommand <- ioInput
 
-	c.ioFilename <- strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight)
+	var filename = strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight)
+	c.ioFilename <- filename
 
 	world := make([][]byte, imageWidth)
 	for x := 0; x < imageWidth; x++ {
@@ -212,6 +228,7 @@ func distributor(p Params, c distributorChannels) {
 				return
 			case <-ticker.C:
 				m.Lock()
+				fmt.Println("TICKING")
 				c.events <- AliveCellsCount{turn, calculateCount(p, world)}
 				m.Unlock()
 			}
@@ -278,28 +295,49 @@ func distributor(p Params, c distributorChannels) {
 		}
 	} else {
 		workerHeight := p.ImageHeight / p.Threads
-		fmt.Println(strconv.Itoa(workerHeight) + " worker height")
+		if p.ImageHeight%p.Threads > 0 {
+			workerHeight++
+		}
+		//fmt.Println("Starting image: " + filename + " with " + strconv.Itoa(p.Threads) + " threads and a worker height of: " + strconv.Itoa(workerHeight))
 
 		out := make([]chan [][]uint8, p.Threads)
 		for i := range out {
 			out[i] = make(chan [][]uint8)
 		}
+
 		for turn < turns {
+
 			m.Lock()
 			for i := 0; i < p.Threads; i++ {
+				//fmt.Println("Starting worker between Y: " + strconv.Itoa(i*workerHeight) + ", " + strconv.Itoa((i+1)*workerHeight))
 				go worker(p, world, i*workerHeight, (i+1)*workerHeight, out[i])
 			}
 
 			var newPixelData [][]uint8
 
-			newPixelData = makeMatrix(p.ImageHeight, p.ImageWidth)
+			newPixelData = make([][]byte, imageWidth)
+			for x := 0; x < imageWidth; x++ {
+				newPixelData[x] = make([]byte, imageHeight)
+			}
 
 			for i := 0; i < p.Threads; i++ {
+				var yOffset = i * workerHeight
 				part := <-out[i]
-				for x := range newPixelData {
-					newPixelData[x] = append(newPixelData[x], part[x]...)
+
+				for x := 0; x < p.ImageWidth; x++ {
+					//fmt.Printf("x: " + strconv.Itoa(x) + "\n")
+					for y := 0; y < workerHeight; y++ {
+						var yAdjusted = yOffset + y
+						if yAdjusted < imageHeight {
+							//fmt.Printf(" y: " + strconv.Itoa(y))
+							newPixelData[x][y+yOffset] = part[x][y]
+						}
+					}
 				}
 			}
+
+			//fmt.Println("world length is " + strconv.Itoa(len(world)) + " and height is " + strconv.Itoa(len(world[0])))
+			//fmt.Println("newpixeldata length is " + strconv.Itoa(len(world)) + " and height is " + strconv.Itoa(len(world[0])))
 			compareWorlds(world, newPixelData, &c, turn, p)
 			world = newPixelData
 			turn++
