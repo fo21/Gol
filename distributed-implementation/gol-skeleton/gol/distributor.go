@@ -24,6 +24,7 @@ func makeCall(client *rpc.Client, world [][]byte, turns, height, width int) {
 	client.Call(stubs.ProcessTurnsHandler, request, response)
 }
 */
+
 func loadWorld(p Params, c distributorChannels) [][]byte {
 	heightString := strconv.Itoa(p.ImageHeight)
 	widthString := strconv.Itoa(p.ImageWidth)
@@ -69,31 +70,11 @@ func distributor(p Params, c distributorChannels) {
 	response := new(stubs.Response)
 	client.Call(stubs.ProcessTurnsHandler, request, response)
 
-	/*
-		ticker := time.NewTicker(2 * time.Second)
-		done := make(chan bool)
-
-		var m sync.Mutex*/
-
-	/*
-		go func() {
-			for {
-				select {
-				case <-done:
-					return
-				case <-ticker.C:
-					m.Lock()
-					c.events <- AliveCellsCount{turn, calculateCount(p, world)}
-					m.Unlock()
-				}
-			}
-		}()*/
-
 	// TODO: Report the final state using FinalTurnCompleteEvent.
 
 	c.events <- FinalTurnComplete{
 		CompletedTurns: response.CompletedTurns,
-		Alive:          response.AliceCells,
+		Alive:          response.AliveCells,
 	}
 
 	// Make sure that the Io has finished any output before exiting.

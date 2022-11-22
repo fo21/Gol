@@ -129,7 +129,7 @@ func (s *GameOfLifeOperations) ProcessTurns(req stubs.Request, res *stubs.Respon
 
 	res.FinalWorld = world
 	res.CompletedTurns = turn
-	res.AliceCells = calculateAliveCells(req, world)
+	res.AliveCells = calculateAliveCells(req, world)
 
 	return
 }

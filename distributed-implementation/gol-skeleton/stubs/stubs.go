@@ -13,5 +13,5 @@ type Request struct {
 type Response struct {
 	FinalWorld     [][]byte
 	CompletedTurns int
-	AliceCells     []util.Cell
+	AliveCells     []util.Cell
 }
