@@ -49,13 +49,7 @@ func getLiveNeighbours(p Params, world [][]byte, a, b int) int {
 	} else {
 		heightDown = b + 1
 	}
-	/*
-		fmt.Println("widthLeft is " + strconv.Itoa(widthLeft))
-		fmt.Println("b (y) is " + strconv.Itoa(b))
-		fmt.Println("world size x is " + strconv.Itoa(len(world)))
-		fmt.Println("world size y is " + strconv.Itoa(len(world[0])) + "\n============")
 
-	*/
 	if isAlive(world[widthLeft][b]) {
 		alive = alive + 1
 	}
@@ -99,13 +93,12 @@ func calculateNextState(p Params, world [][]byte, startY, endY int) [][]byte {
 		newWorld[x] = make([]byte, endY-startY) // calculate height of this part of matrix
 	}
 
-	var lastBit = endY
-	if lastBit > p.ImageHeight {
-		lastBit = p.ImageHeight
+	if endY > p.ImageHeight {
+		endY = p.ImageHeight
 	}
 
 	for x := 0; x < p.ImageWidth; x++ {
-		for y := 0; y < lastBit-startY; y++ {
+		for y := 0; y < endY-startY; y++ {
 			//fmt.Println("=========\nendY: " + strconv.Itoa(endY) + " startY: " + strconv.Itoa(startY))
 			//fmt.Println("y is currently: " + strconv.Itoa(y))
 			neighbours := getLiveNeighbours(p, world, x, y+startY)
@@ -152,15 +145,6 @@ func calculateCount(p Params, world [][]byte) int {
 func worker(p Params, world [][]byte, startY, endY int, out chan<- [][]uint8) {
 	imagePart := calculateNextState(p, world, startY, endY)
 	out <- imagePart
-}
-
-//make an uninitialised matrix
-func makeMatrix(width, height int) [][]uint8 {
-	matrix := make([][]uint8, width)
-	for i := range matrix {
-		matrix[i] = make([]uint8, height)
-	}
-	return matrix
 }
 
 //report the CellFlipped event when a cell changes state
@@ -228,7 +212,6 @@ func distributor(p Params, c distributorChannels) {
 				return
 			case <-ticker.C:
 				m.Lock()
-				fmt.Println("TICKING")
 				c.events <- AliveCellsCount{turn, calculateCount(p, world)}
 				m.Unlock()
 			}
@@ -294,6 +277,7 @@ func distributor(p Params, c distributorChannels) {
 			m.Unlock()
 		}
 	} else {
+
 		workerHeight := p.ImageHeight / p.Threads
 		if p.ImageHeight%p.Threads > 0 {
 			workerHeight++
@@ -306,8 +290,8 @@ func distributor(p Params, c distributorChannels) {
 		}
 
 		for turn < turns {
-
 			m.Lock()
+
 			for i := 0; i < p.Threads; i++ {
 				//fmt.Println("Starting worker between Y: " + strconv.Itoa(i*workerHeight) + ", " + strconv.Itoa((i+1)*workerHeight))
 				go worker(p, world, i*workerHeight, (i+1)*workerHeight, out[i])
@@ -336,13 +320,12 @@ func distributor(p Params, c distributorChannels) {
 				}
 			}
 
-			//fmt.Println("world length is " + strconv.Itoa(len(world)) + " and height is " + strconv.Itoa(len(world[0])))
-			//fmt.Println("newpixeldata length is " + strconv.Itoa(len(world)) + " and height is " + strconv.Itoa(len(world[0])))
 			compareWorlds(world, newPixelData, &c, turn, p)
 			world = newPixelData
 			turn++
 			c.events <- TurnComplete{CompletedTurns: turn}
 			m.Unlock()
+
 		}
 
 	}
