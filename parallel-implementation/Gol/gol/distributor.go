@@ -85,44 +85,30 @@ func isAlive(cell byte) bool {
 	return false
 }
 
-//calculates the next state of the world for single threaded
-func calculateNextState(p Params, world [][]byte) [][]byte {
-	newWorld := make([][]byte, p.ImageWidth)
-	for i := range newWorld {
-		newWorld[i] = make([]byte, p.ImageHeight)
-	}
-	for i := 0; i < p.ImageHeight; i++ {
-		for j := 0; j < p.ImageWidth; j++ {
-			neighbours := getLiveNeighbours(p, world, i, j)
-			if world[i][j] == 0xff && (neighbours < 2 || neighbours > 3) {
-				newWorld[i][j] = 0x0
-			} else if world[i][j] == 0x0 && neighbours == 3 {
-				newWorld[i][j] = 0xff
-			} else {
-				newWorld[i][j] = world[i][j]
-			}
-		}
-	}
-	return newWorld
-}
-
 //calculates the next state of the world for multiple threaded
-func calculateNextStateByThread(p Params, world [][]byte, startY, endY int) [][]byte {
+func calculateNextState(p Params, world [][]byte, startY, endY int) [][]byte {
 
 	newWorld := make([][]byte, p.ImageWidth)
-	for i := range newWorld {
-		newWorld[i] = make([]byte, endY+1)
+	for x := range newWorld {
+		newWorld[x] = make([]byte, endY-startY) // calculate height of this part of matrix
 	}
 
-	for i := startY; i < endY; i++ {
-		for j := 0; j < p.ImageWidth; j++ {
-			neighbours := getLiveNeighbours(p, world, i, j)
-			if world[i][j] == 0xff && (neighbours < 2 || neighbours > 3) {
-				newWorld[i][j] = 0x0
-			} else if world[i][j] == 0x0 && neighbours == 3 {
-				newWorld[i][j] = 0xff
+	if endY > p.ImageHeight {
+		endY = p.ImageHeight
+	}
+
+	for x := 0; x < p.ImageWidth; x++ {
+		for y := 0; y < endY-startY; y++ {
+			//fmt.Println("=========\nendY: " + strconv.Itoa(endY) + " startY: " + strconv.Itoa(startY))
+			//fmt.Println("y is currently: " + strconv.Itoa(y))
+			neighbours := getLiveNeighbours(p, world, x, y+startY)
+			//fmt.Println("Working on Cell with X: " + strconv.Itoa(x) + " and Y: " + strconv.Itoa(y))
+			if world[x][y+startY] == 0xff && (neighbours < 2 || neighbours > 3) {
+				newWorld[x][y] = 0x0
+			} else if world[x][y+startY] == 0x0 && neighbours == 3 {
+				newWorld[x][y] = 0xff
 			} else {
-				newWorld[i][j] = world[i][j]
+				newWorld[x][y] = world[x][y+startY]
 			}
 		}
 	}
@@ -131,11 +117,11 @@ func calculateNextStateByThread(p Params, world [][]byte, startY, endY int) [][]
 
 //create a list of alive cells
 func calculateAliveCells(p Params, world [][]byte) []util.Cell {
-	newCell := []util.Cell{}
-	for i := 0; i < p.ImageHeight; i++ {
-		for j := 0; j < p.ImageWidth; j++ {
-			if world[i][j] == 0xff {
-				newCell = append(newCell, util.Cell{j, i})
+	var newCell []util.Cell
+	for x := 0; x < p.ImageWidth; x++ {
+		for y := 0; y < p.ImageHeight; y++ {
+			if world[x][y] == 0xff {
+				newCell = append(newCell, util.Cell{X: y, Y: x}) // TODO FIGURE THIS OUT
 			}
 		}
 	}
@@ -145,9 +131,9 @@ func calculateAliveCells(p Params, world [][]byte) []util.Cell {
 //count the number of alive cells
 func calculateCount(p Params, world [][]byte) int {
 	sum := 0
-	for i := 0; i < p.ImageHeight; i++ {
-		for j := 0; j < p.ImageWidth; j++ {
-			if world[i][j] != 0 {
+	for x := 0; x < p.ImageWidth; x++ {
+		for y := 0; y < p.ImageHeight; y++ {
+			if world[x][y] != 0 {
 				sum++
 			}
 		}
@@ -156,27 +142,31 @@ func calculateCount(p Params, world [][]byte) int {
 }
 
 //worker function for multiple threaded case
-func worker(p Params, world [][]byte, startX, endX, startY, endY int, out chan<- [][]uint8) {
-	imagePart := calculateNextStateByThread(p, world, startY, endY)
+func worker(p Params, world [][]byte, startY, endY int, out chan<- [][]uint8) {
+	imagePart := calculateNextState(p, world, startY, endY)
 	out <- imagePart
-}
-
-//make an uninitialised matrix
-func makeMatrix(height, width int) [][]uint8 {
-	matrix := make([][]uint8, height)
-	for i := range matrix {
-		matrix[i] = make([]uint8, width)
-	}
-	return matrix
 }
 
 //report the CellFlipped event when a cell changes state
 func compareWorlds(old, new [][]byte, c *distributorChannels, turn int, p Params) {
-	for i := 0; i < p.ImageHeight; i++ {
-		for j := 0; j < p.ImageWidth; j++ {
-			if old[i][j] != new[i][j] {
-				c.events <- CellFlipped{turn, util.Cell{j, i}}
+	for x := 0; x < p.ImageWidth; x++ {
+		//fmt.Printf("x: " + strconv.Itoa(x))
+		for y := 0; y < p.ImageHeight; y++ {
+			//fmt.Printf(" y: " + strconv.Itoa(y) + "\n")
+			if old[x][y] != new[x][y] {
+				c.events <- CellFlipped{turn, util.Cell{X: y, Y: x}}
 			}
+		}
+	}
+}
+
+func saveWorld(p Params, c distributorChannels, world [][]byte, turns int) {
+	c.ioCommand <- ioOutput
+	c.ioFilename <- strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight) + "x" + strconv.Itoa(turns)
+
+	for x := 0; x < p.ImageWidth; x++ {
+		for y := 0; y < p.ImageHeight; y++ {
+			c.ioOutput <- world[x][y]
 		}
 	}
 }
@@ -187,23 +177,17 @@ func distributor(p Params, c distributorChannels) {
 	imageHeight := p.ImageHeight
 	imageWidth := p.ImageWidth
 
-	heightString := strconv.Itoa(imageHeight)
-	widthString := strconv.Itoa(imageWidth)
-
-	filename := heightString + "x" + widthString
-
-	//read in the initial configuration of the world
-
 	c.ioCommand <- ioInput
 
+	var filename = strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight)
 	c.ioFilename <- filename
 
-	world := make([][]uint8, imageHeight)
-	for i := 0; i < imageHeight; i++ {
-		world[i] = make([]uint8, imageWidth)
-		for j := range world[i] {
+	world := make([][]byte, imageWidth)
+	for x := 0; x < imageWidth; x++ {
+		world[x] = make([]byte, imageHeight)
+		for y := 0; y < p.ImageHeight; y++ {
 			byte := <-c.ioInput
-			world[i][j] = byte
+			world[x][y] = byte
 		}
 	}
 
@@ -251,16 +235,7 @@ func distributor(p Params, c distributorChannels) {
 				}
 			case 'q':
 				if ok == 1 {
-					c.ioCommand <- ioOutput
-					c.ioFilename <- filename + "x" + strconv.Itoa(p.Turns)
-
-					for i := 0; i < imageHeight; i++ {
-						for j := 0; j < imageWidth; j++ {
-							c.ioOutput <- world[i][j]
-						}
-					}
-
-					time.Sleep(1 * time.Second)
+					saveWorld(p, c, world, turn)
 
 					alive := calculateAliveCells(p, world)
 					c.events <- FinalTurnComplete{turn, alive}
@@ -280,15 +255,7 @@ func distributor(p Params, c distributorChannels) {
 				}
 			case 's':
 				if ok == 1 {
-					c.ioCommand <- ioOutput
-					c.ioFilename <- filename + "x" + strconv.Itoa(turns)
-
-					for i := 0; i < imageHeight; i++ {
-						for j := 0; j < imageWidth; j++ {
-							c.ioOutput <- world[i][j]
-						}
-					}
-					time.Sleep(1 * time.Second)
+					saveWorld(p, c, world, turn)
 				} else {
 					fmt.Println("Pressed wrong key. try again \n")
 				}
@@ -303,56 +270,74 @@ func distributor(p Params, c distributorChannels) {
 		for turn < turns {
 			m.Lock()
 			oldWorld := append(world)
-			world = calculateNextState(p, world)
+			world = calculateNextState(p, world, 0, p.ImageHeight)
 			compareWorlds(oldWorld, world, &c, turn+1, p)
 			turn++
 			c.events <- TurnComplete{CompletedTurns: turn}
 			m.Unlock()
 		}
 	} else {
+
+		workerHeight := p.ImageHeight / p.Threads
+		if p.ImageHeight%p.Threads > 0 {
+			workerHeight++
+		}
+		//fmt.Println("Starting image: " + filename + " with " + strconv.Itoa(p.Threads) + " threads and a worker height of: " + strconv.Itoa(workerHeight))
+
+		out := make([]chan [][]uint8, p.Threads)
+		for i := range out {
+			out[i] = make(chan [][]uint8)
+		}
+
 		for turn < turns {
-			workerHeight := p.ImageHeight / p.Threads
-			out := make([]chan [][]uint8, p.Threads)
-			for i := range out {
-				out[i] = make(chan [][]uint8)
-			}
 			m.Lock()
+
 			for i := 0; i < p.Threads; i++ {
-				go worker(p, world, i*workerHeight, (i+1)*workerHeight, 0, p.ImageWidth, out[i])
+				//fmt.Println("Starting worker between Y: " + strconv.Itoa(i*workerHeight) + ", " + strconv.Itoa((i+1)*workerHeight))
+				go worker(p, world, i*workerHeight, (i+1)*workerHeight, out[i])
 			}
 
 			var newPixelData [][]uint8
 
-			newPixelData = makeMatrix(0, 0)
+			newPixelData = make([][]byte, imageWidth)
+			for x := 0; x < imageWidth; x++ {
+				newPixelData[x] = make([]byte, imageHeight)
+			}
 
 			for i := 0; i < p.Threads; i++ {
+				var yOffset = i * workerHeight
 				part := <-out[i]
-				newPixelData = append(newPixelData, part...)
+
+				for x := 0; x < p.ImageWidth; x++ {
+					//fmt.Printf("x: " + strconv.Itoa(x) + "\n")
+					for y := 0; y < workerHeight; y++ {
+						var yAdjusted = yOffset + y
+						if yAdjusted < imageHeight {
+							//fmt.Printf(" y: " + strconv.Itoa(y))
+							newPixelData[x][y+yOffset] = part[x][y]
+						}
+					}
+				}
 			}
+
 			compareWorlds(world, newPixelData, &c, turn, p)
 			world = newPixelData
 			turn++
 			c.events <- TurnComplete{CompletedTurns: turn}
 			m.Unlock()
+
 		}
 
 	}
 
-	c.events <- FinalTurnComplete{turns, calculateAliveCells(p, world)}
+	c.events <- FinalTurnComplete{turn, calculateAliveCells(p, world)}
 
 	ticker.Stop()
 	done <- true
 
 	//write final state of the world to pgm image
-	
-	c.ioCommand <- ioOutput
-	c.ioFilename <- filename + "x" + strconv.Itoa(turns)
 
-	for i := 0; i < imageHeight; i++ {
-		for j := 0; j < imageWidth; j++ {
-			c.ioOutput <- world[i][j]
-		}
-	}
+	saveWorld(p, c, world, turns)
 
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
