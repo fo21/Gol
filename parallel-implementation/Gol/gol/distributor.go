@@ -227,10 +227,12 @@ func distributor(p Params, c distributorChannels) {
 				if ok == 1 {
 					fmt.Printf("The current turn that is being processed: %d\n", turn)
 					ok = 0
+					c.events <- StateChange{turn, Paused}
 					m.Lock()
 				} else if ok == 0 {
 					fmt.Println("Continuing... \n")
 					ok = 1
+					c.events <- StateChange{turn, Executing}
 					m.Unlock()
 				}
 			case 'q':
